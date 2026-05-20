@@ -55,6 +55,8 @@ Or let the bridge do this:
 tabbit launch
 ```
 
+`tabbit launch` will relaunch Tabbit so the `--remote-debugging-port` flag can take effect. Save any important in-progress browser work first.
+
 Check status:
 
 ```bash
@@ -135,6 +137,7 @@ Right-side Tabbit Chat:
 - `tabbit.chat.send`
 - `tabbit.chat.wait_result`
 - `tabbit.chat.read_last`
+- `tabbit.chat.read_last_result`
 
 Task state:
 

@@ -128,6 +128,12 @@ export function createTools(bridge: TabbitBridge): ToolDefinition[] {
       run: (args) => bridge.chat.readVisible(optionalNumber(args, "limit") ?? 12000),
     },
     {
+      name: "tabbit.chat.read_last_result",
+      description: "Read only the latest Tabbit Chat assistant result when it can be extracted from the sidebar DOM.",
+      inputSchema: { type: "object", properties: {} },
+      run: () => bridge.chat.readLastResult(),
+    },
+    {
       name: "tabbit.task.create",
       description: "Create a local Codex-managed task record for work delegated to Tabbit.",
       inputSchema: {

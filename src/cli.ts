@@ -102,6 +102,10 @@ async function main(): Promise<void> {
       print(await bridge.chat.readVisible());
       return;
     }
+    if (command === "result") {
+      print(await bridge.chat.readLastResult());
+      return;
+    }
   }
 
   if (group === "task") {

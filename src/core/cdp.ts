@@ -93,7 +93,7 @@ export class TabbitCdp {
   async listTabs(): Promise<TabInfo[]> {
     const tabs = await getJson<TabInfo[]>(`http://127.0.0.1:${this.port}/json/list`);
     return tabs
-      .filter((tab) => tab.type === "page" || tab.url)
+      .filter((tab) => tab.type === "page")
       .map((tab, index) => ({
         ...tab,
         active: index === 0,
@@ -115,9 +115,16 @@ export class TabbitCdp {
 
   async currentTab(): Promise<TabInfo> {
     const tabs = await this.listTabs();
-    const page = tabs.find((tab) => tab.url && !tab.url.startsWith("devtools://"));
+    const page = tabs.find((tab) => isContentPage(tab.url)) ?? tabs.find((tab) => tab.url && !tab.url.startsWith("devtools://"));
     if (!page) throw new Error("No Tabbit page tab is available through CDP");
     return page;
+  }
+
+  async sidebarTab(): Promise<TabInfo> {
+    const tabs = await this.listTabs();
+    const sidebar = tabs.find((tab) => tab.url.includes("web.tabbit-ai.com/sidebar"));
+    if (!sidebar) throw new Error("Tabbit sidebar Chat target is not available through CDP");
+    return sidebar;
   }
 
   async evaluate<T = JsonValue>(expression: string, tabId?: string): Promise<T> {
@@ -158,7 +165,7 @@ export class TabbitCdp {
         headings: Array.from(document.querySelectorAll("h1,h2,h3")).map((el) => clean(el.textContent)).filter(Boolean).slice(0, 80),
         links: Array.from(document.querySelectorAll("a[href]")).map((el) => ({ text: clean(el.textContent), href: el.href })).filter((item) => item.text || item.href).slice(0, 120),
         buttons: Array.from(document.querySelectorAll("button,[role=button]")).map((el) => clean(el.textContent || el.getAttribute("aria-label") || el.getAttribute("title"))).filter(Boolean).slice(0, 120),
-        inputs: Array.from(document.querySelectorAll("input,textarea,[contenteditable=true]")).map((el) => ({
+        inputs: Array.from(document.querySelectorAll("input,textarea,[contenteditable],[role=textbox]")).map((el) => ({
           type: el.getAttribute("type") || el.tagName.toLowerCase(),
           name: el.getAttribute("name") || el.getAttribute("aria-label") || "",
           placeholder: el.getAttribute("placeholder") || ""
@@ -167,4 +174,12 @@ export class TabbitCdp {
     })()`;
     return this.evaluate<PageInspection>(script, tabId);
   }
+}
+
+function isContentPage(url: string): boolean {
+  if (!url || url.startsWith("devtools://")) return false;
+  if (url.includes("web.tabbit-ai.com/sidebar")) return false;
+  if (url.includes("web.tabbit-ai.com/newtab")) return false;
+  if (url.startsWith("chrome-extension://")) return false;
+  return /^https?:\/\//.test(url);
 }

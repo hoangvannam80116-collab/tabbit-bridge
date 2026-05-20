@@ -37,10 +37,47 @@ export class TabbitChat {
   }
 
   async readVisible(limit = 12000): Promise<string> {
+    const sidebar = await this.cdp.sidebarTab().catch(() => null);
+    if (sidebar) {
+      const text = await this.cdp.evaluate<string>(
+        `(() => (document.body?.innerText || "").replace(/\\n{3,}/g, "\\n\\n").slice(0, ${Number(limit)}))()`,
+        sidebar.id,
+      ).catch(() => "");
+      if (text) return text;
+    }
     return readVisibleText(limit);
   }
 
-  async waitResult(options: { timeoutMs?: number; quietMs?: number } = {}): Promise<{ text: string; elapsedMs: number }> {
+  async readLastResult(): Promise<string> {
+    const sidebar = await this.cdp.sidebarTab().catch(() => null);
+    if (sidebar) {
+      const text = await this.cdp.evaluate<string>(
+        `(() => {
+          const blocks = Array.from(document.querySelectorAll("div"))
+            .map((el) => {
+              const cls = String(el.className || "");
+              const text = (el.innerText || "").trim();
+              const rect = el.getBoundingClientRect();
+              return { el, cls, text, rect };
+            })
+            .filter((item) =>
+              item.text &&
+              item.rect.width > 20 &&
+              item.rect.height > 10 &&
+              item.cls.includes("flex items-start gap-2 w-full px-2") &&
+              !item.el.querySelector('[class*="UserMessageReadonlyContent"]')
+            );
+          const last = blocks[blocks.length - 1];
+          return last ? last.text : "";
+        })()`,
+        sidebar.id,
+      ).catch(() => "");
+      if (text) return text;
+    }
+    return "";
+  }
+
+  async waitResult(options: { timeoutMs?: number; quietMs?: number } = {}): Promise<{ text: string; lastResult: string; elapsedMs: number }> {
     const timeoutMs = options.timeoutMs ?? 120000;
     const quietMs = options.quietMs ?? 2500;
     const started = Date.now();
@@ -54,16 +91,18 @@ export class TabbitChat {
         lastChanged = Date.now();
       }
       if (last && Date.now() - lastChanged >= quietMs) {
-        return { text: last, elapsedMs: Date.now() - started };
+        return { text: last, lastResult: await this.readLastResult(), elapsedMs: Date.now() - started };
       }
       await new Promise((resolve) => setTimeout(resolve, 750));
     }
 
-    return { text: last, elapsedMs: Date.now() - started };
+    return { text: last, lastResult: await this.readLastResult(), elapsedMs: Date.now() - started };
   }
 
   private async tryDomOpenChat(): Promise<boolean> {
     if (!(await this.cdp.isReachable())) return false;
+    const sidebar = await this.cdp.sidebarTab().catch(() => null);
+    if (sidebar) return true;
     const expression = `(() => {
       const candidates = Array.from(document.querySelectorAll("button,[role=button],a"));
       const chat = candidates.find((el) => /chat/i.test(el.textContent || el.getAttribute("aria-label") || el.getAttribute("title") || ""));
@@ -80,39 +119,57 @@ export class TabbitChat {
 
   private async tryDomSend(prompt: string): Promise<boolean> {
     if (!(await this.cdp.isReachable())) return false;
+    const sidebar = await this.cdp.sidebarTab().catch(() => null);
+    if (!sidebar) return false;
     const expression = `async () => {
       const prompt = ${JSON.stringify(prompt)};
       const selectors = [
         "textarea",
-        "[contenteditable=true]",
+        "[contenteditable]",
         "input[type=text]",
         "[role=textbox]"
       ];
       const input = selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector)))
         .find((el) => {
           const text = [el.getAttribute("placeholder"), el.getAttribute("aria-label"), el.textContent].join(" ");
-          return /页面划词|截图提问|输入|chat|message|prompt/i.test(text) || selectors.length > 0;
+          return /页面划词|截图提问|输入|chat|message|prompt/i.test(text) || el.getAttribute("role") === "textbox";
         });
       if (!input) return false;
       input.focus();
-      if ("value" in input) {
+      if ("value" in input && input.tagName !== "DIV") {
         input.value = prompt;
         input.dispatchEvent(new Event("input", { bubbles: true }));
       } else {
-        input.textContent = prompt;
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(input);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        document.execCommand("insertText", false, prompt);
         input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: prompt }));
       }
-      const buttons = Array.from(document.querySelectorAll("button,[role=button]"));
-      const send = buttons.reverse().find((el) => /发送|send|submit|↑|➜|arrow/i.test(el.textContent || el.getAttribute("aria-label") || el.getAttribute("title") || ""));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const buttons = Array.from(document.querySelectorAll("button,[role=button]"))
+        .map((el) => {
+          const rect = el.getBoundingClientRect();
+          return { el, rect, visible: rect.width > 0 && rect.height > 0 };
+        })
+        .filter((item) => item.visible && !item.el.disabled);
+      const labeled = buttons.find((item) => /发送|send|submit|↑|➜|arrow/i.test(item.el.textContent || item.el.getAttribute("aria-label") || item.el.getAttribute("title") || ""));
+      const inputRect = input.getBoundingClientRect();
+      const lowerRight = buttons
+        .filter((item) => item.rect.y >= inputRect.y && item.rect.x >= inputRect.x)
+        .sort((a, b) => (b.rect.y - a.rect.y) || (b.rect.x - a.rect.x))[0];
+      const send = labeled?.el || lowerRight?.el;
       if (send) {
         send.click();
       } else {
-        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true }));
       }
       return true;
     }`;
     try {
-      return Boolean(await this.cdp.evaluate<boolean>(`(${expression})()`));
+      return Boolean(await this.cdp.evaluate<boolean>(`(${expression})()`, sidebar.id));
     } catch {
       return false;
     }

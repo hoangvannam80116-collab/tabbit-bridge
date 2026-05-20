@@ -40,10 +40,15 @@ export class TabbitBridge {
     if (status.cdpReachable) return status;
     if (status.tabbitRunning) {
       await quitTabbit();
-      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
     await openTabbitWithDebugging(this.cdpPort);
-    await new Promise((resolve) => setTimeout(resolve, 2500));
-    return this.status();
+
+    const deadline = Date.now() + 10000;
+    let latest = await this.status();
+    while (!latest.cdpReachable && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 750));
+      latest = await this.status();
+    }
+    return latest;
   }
 }
