@@ -15,7 +15,7 @@ const tools = new Map(toolDefinitions.map((tool) => [tool.name, tool]));
 const server = new Server(
   {
     name: "tabbit-bridge",
-    version: "0.1.1",
+    version: "0.1.2",
   },
   {
     capabilities: {

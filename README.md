@@ -72,6 +72,7 @@ tabbit page inspect
 tabbit chat open
 tabbit chat send "请总结当前页面，并列出三个产品卖点"
 tabbit chat wait
+tabbit chat run "打开 https://www.biji.com 并汇报页面标题和 URL"
 tabbit task create "Get笔记官网调研"
 tabbit task list
 tabbit downloads list
@@ -138,6 +139,8 @@ Right-side Tabbit Chat:
 - `tabbit.chat.wait_result`
 - `tabbit.chat.read_last`
 - `tabbit.chat.read_last_result`
+- `tabbit.chat.confirm_execute`
+- `tabbit.chat.run_task`
 
 Task state:
 

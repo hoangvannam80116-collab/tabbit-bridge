@@ -24,6 +24,10 @@ Usage:
   tabbit chat open
   tabbit chat send <prompt>
   tabbit chat wait [timeoutMs]
+  tabbit chat last
+  tabbit chat result
+  tabbit chat confirm-execute
+  tabbit chat run <prompt>
   tabbit task create <name>
   tabbit task list
   tabbit task status <id>
@@ -104,6 +108,15 @@ async function main(): Promise<void> {
     }
     if (command === "result") {
       print(await bridge.chat.readLastResult());
+      return;
+    }
+    if (command === "confirm-execute") {
+      print(await bridge.chat.confirmExecute());
+      return;
+    }
+    if (command === "run") {
+      const prompt = required(args.join(" "), "prompt");
+      print(await bridge.chat.runTask(prompt));
       return;
     }
   }

@@ -134,6 +134,29 @@ export function createTools(bridge: TabbitBridge): ToolDefinition[] {
       run: () => bridge.chat.readLastResult(),
     },
     {
+      name: "tabbit.chat.confirm_execute",
+      description: "Click Tabbit Chat's visible '执行' confirmation button when an agent task asks for execution confirmation.",
+      inputSchema: { type: "object", properties: {} },
+      run: () => bridge.chat.confirmExecute(),
+    },
+    {
+      name: "tabbit.chat.run_task",
+      description: "Send a task to Tabbit Chat, auto-click the '执行' confirmation if shown, and wait for the final result.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          prompt: stringProperty("Instruction to send to Tabbit Chat"),
+          timeoutMs: numberProperty("Optional timeout in milliseconds"),
+          quietMs: numberProperty("Optional quiet period in milliseconds"),
+        },
+        required: ["prompt"],
+      },
+      run: (args) => bridge.chat.runTask(requiredString(args, "prompt"), {
+        timeoutMs: optionalNumber(args, "timeoutMs"),
+        quietMs: optionalNumber(args, "quietMs"),
+      }),
+    },
+    {
       name: "tabbit.task.create",
       description: "Create a local Codex-managed task record for work delegated to Tabbit.",
       inputSchema: {

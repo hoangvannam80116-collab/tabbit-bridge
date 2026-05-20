@@ -36,6 +36,57 @@ export class TabbitChat {
     return { method: "accessibility", sent: true };
   }
 
+  async confirmExecute(): Promise<{ clicked: boolean; text?: string; note?: string }> {
+    const sidebar = await this.cdp.sidebarTab().catch(() => null);
+    if (!sidebar) return { clicked: false, note: "Tabbit sidebar Chat target is not available" };
+
+    return this.cdp.evaluate<{ clicked: boolean; text?: string; note?: string }>(
+      `(() => {
+        const buttons = Array.from(document.querySelectorAll("button,[role=button]"))
+          .map((el) => {
+            const rect = el.getBoundingClientRect();
+            return {
+              el,
+              text: (el.innerText || el.textContent || "").trim(),
+              title: el.getAttribute("title") || "",
+              aria: el.getAttribute("aria-label") || "",
+              rect,
+              visible: rect.width > 0 && rect.height > 0
+            };
+          })
+          .filter((item) => item.visible && !item.el.disabled);
+        const execute = buttons
+          .filter((item) => item.text === "执行" || item.title === "执行" || item.aria === "执行")
+          .sort((a, b) => (b.rect.y - a.rect.y) || (b.rect.x - a.rect.x))[0];
+        if (!execute) return { clicked: false, note: "No visible Execute button found" };
+        execute.el.click();
+        return { clicked: true, text: execute.text || execute.title || execute.aria };
+      })()`,
+      sidebar.id,
+    );
+  }
+
+  async runTask(prompt: string, options: { timeoutMs?: number; quietMs?: number } = {}): Promise<{
+    sent: ChatSendResult;
+    firstResult: Awaited<ReturnType<TabbitChat["waitResult"]>>;
+    confirm: { clicked: boolean; text?: string; note?: string };
+    finalResult: Awaited<ReturnType<TabbitChat["waitResult"]>>;
+  }> {
+    const sent = await this.send(prompt);
+    const firstResult = await this.waitResult({
+      timeoutMs: Math.min(options.timeoutMs ?? 90000, 30000),
+      quietMs: options.quietMs,
+    });
+    const needsConfirm = /仅聊天\s*执行|开启 Tabbit 智能代理模式|智能代理模式/.test(firstResult.text);
+    const confirm = needsConfirm
+      ? await this.confirmExecute()
+      : { clicked: false, note: "No execution confirmation was requested" };
+    const finalResult = confirm.clicked
+      ? await this.waitResult({ timeoutMs: options.timeoutMs ?? 120000, quietMs: options.quietMs })
+      : firstResult;
+    return { sent, firstResult, confirm, finalResult };
+  }
+
   async readVisible(limit = 12000): Promise<string> {
     const sidebar = await this.cdp.sidebarTab().catch(() => null);
     if (sidebar) {
@@ -91,7 +142,10 @@ export class TabbitChat {
         lastChanged = Date.now();
       }
       if (last && Date.now() - lastChanged >= quietMs) {
-        return { text: last, lastResult: await this.readLastResult(), elapsedMs: Date.now() - started };
+        const lastResult = await this.readLastResult();
+        if (!isTransientChatState(last, lastResult)) {
+          return { text: last, lastResult, elapsedMs: Date.now() - started };
+        }
       }
       await new Promise((resolve) => setTimeout(resolve, 750));
     }
@@ -157,8 +211,13 @@ export class TabbitChat {
         .filter((item) => item.visible && !item.el.disabled);
       const labeled = buttons.find((item) => /发送|send|submit|↑|➜|arrow/i.test(item.el.textContent || item.el.getAttribute("aria-label") || item.el.getAttribute("title") || ""));
       const inputRect = input.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
       const lowerRight = buttons
-        .filter((item) => item.rect.y >= inputRect.y && item.rect.x >= inputRect.x)
+        .filter((item) =>
+          item.rect.y >= inputRect.y &&
+          item.rect.y <= Math.min(viewportHeight, inputRect.bottom + 260) &&
+          item.rect.x >= inputRect.x
+        )
         .sort((a, b) => (b.rect.y - a.rect.y) || (b.rect.x - a.rect.x))[0];
       const send = labeled?.el || lowerRight?.el;
       if (send) {
@@ -174,4 +233,15 @@ export class TabbitChat {
       return false;
     }
   }
+}
+
+function isTransientChatState(text: string, lastResult: string): boolean {
+  const tail = text.slice(-1200);
+  const result = lastResult.trim();
+  if (!result) return true;
+  if (/思考中|执行中|操作中|跟随中|可继续补充信息/.test(tail)) return true;
+  if (/^思考中$/.test(result)) return true;
+  if (/跳转到指定URL\s*$/.test(result)) return true;
+  if (/我将为您|我来帮您|执行步骤\s*$/.test(result) && !/DONE|任务完成|成功|已完成|页面已成功加载/.test(result)) return true;
+  return false;
 }
