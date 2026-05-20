@@ -68,11 +68,13 @@ tabbit status
 ```bash
 tabbit tabs
 tabbit tabs new https://www.biji.com
+tabbit sidebar new-tab https://chatgpt.com
 tabbit page inspect
 tabbit chat open
 tabbit chat send "请总结当前页面，并列出三个产品卖点"
 tabbit chat wait
 tabbit chat run "打开 https://www.biji.com 并汇报页面标题和 URL"
+tabbit agent status
 tabbit task create "Get笔记官网调研"
 tabbit task list
 tabbit downloads list
@@ -126,6 +128,7 @@ Tabs:
 - `tabbit.tabs.new`
 - `tabbit.tabs.activate`
 - `tabbit.tabs.close`
+- `tabbit.sidebar.new_tab`
 
 Page inspection:
 
@@ -141,6 +144,7 @@ Right-side Tabbit Chat:
 - `tabbit.chat.read_last_result`
 - `tabbit.chat.confirm_execute`
 - `tabbit.chat.run_task`
+- `tabbit.agent.status`
 
 Task state:
 

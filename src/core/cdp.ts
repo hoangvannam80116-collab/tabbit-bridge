@@ -101,8 +101,27 @@ export class TabbitCdp {
   }
 
   async openTab(url: string): Promise<TabInfo> {
-    const encoded = encodeURIComponent(url);
-    return getJson<TabInfo>(`http://127.0.0.1:${this.port}/json/new?${encoded}`);
+    const version = await this.version();
+    const browserWs = version.webSocketDebuggerUrl;
+    if (typeof browserWs === "string") {
+      const client = new CdpClient(browserWs);
+      try {
+        const created = await client.send<{ targetId: string }>("Target.createTarget", { url });
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const tab = (await this.listTabs()).find((candidate) => candidate.id === created.targetId);
+        if (tab) return tab;
+      } finally {
+        client.close();
+      }
+    }
+
+    const response = await fetch(`http://127.0.0.1:${this.port}/json/new?${encodeURIComponent(url)}`, {
+      method: "PUT",
+    });
+    if (!response.ok) {
+      throw new Error(`Create tab failed: ${response.status} ${response.statusText}`);
+    }
+    return (await response.json()) as TabInfo;
   }
 
   async closeTab(id: string): Promise<unknown> {

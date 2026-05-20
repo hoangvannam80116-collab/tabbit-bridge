@@ -68,10 +68,13 @@ export class TabbitChat {
 
   async runTask(prompt: string, options: { timeoutMs?: number; quietMs?: number } = {}): Promise<{
     sent: ChatSendResult;
-    firstResult: Awaited<ReturnType<TabbitChat["waitResult"]>>;
     confirm: { clicked: boolean; text?: string; note?: string };
-    finalResult: Awaited<ReturnType<TabbitChat["waitResult"]>>;
+    tabbitSaid: string;
+    elapsedMs: number;
+    firstMessage: string;
+    runtimeStatus: Awaited<ReturnType<TabbitChat["runtimeStatus"]>>;
   }> {
+    const started = Date.now();
     const sent = await this.send(prompt);
     const firstResult = await this.waitResult({
       timeoutMs: Math.min(options.timeoutMs ?? 90000, 30000),
@@ -84,7 +87,86 @@ export class TabbitChat {
     const finalResult = confirm.clicked
       ? await this.waitResult({ timeoutMs: options.timeoutMs ?? 120000, quietMs: options.quietMs })
       : firstResult;
-    return { sent, firstResult, confirm, finalResult };
+    return {
+      sent,
+      confirm,
+      tabbitSaid: finalResult.lastResult,
+      elapsedMs: Date.now() - started,
+      firstMessage: firstResult.lastResult,
+      runtimeStatus: await this.runtimeStatus(),
+    };
+  }
+
+  async runtimeStatus(): Promise<{
+    status: "idle" | "awaiting_confirmation" | "running" | "done" | "unknown";
+    phase: string;
+    completion: number | null;
+    taskTitle?: string;
+    currentPage?: { id: string; title: string; url: string; active?: boolean };
+    tabbitSaid: string;
+    evidence: string[];
+  }> {
+    const [text, tabbitSaid, tabs] = await Promise.all([
+      this.readVisible(24000).catch(() => ""),
+      this.readLastResult().catch(() => ""),
+      this.cdp.listTabs().catch(() => []),
+    ]);
+    const tail = text.slice(-3000);
+    const evidence: string[] = [];
+    const taskTitle = extractLast(tail, /任务：([^\n]+)/g);
+    const currentPage = [...tabs]
+      .reverse()
+      .find((tab) =>
+        /^https?:\/\//.test(tab.url) &&
+        !tab.url.includes("web.tabbit-ai.com/sidebar") &&
+        !tab.url.includes("web.tabbit-ai.com/newtab") &&
+        !tab.url.includes("web.tabbit-ai.com/browser-use"),
+      );
+
+    let status: "idle" | "awaiting_confirmation" | "running" | "done" | "unknown" = "unknown";
+    let phase = "unknown";
+
+    if (/仅聊天\s*执行|开启 Tabbit 智能代理模式/.test(tail)) {
+      status = "awaiting_confirmation";
+      phase = "waiting_for_execute_confirmation";
+      evidence.push("Tabbit is asking for '执行' confirmation.");
+    } else if (/思考中/.test(tail)) {
+      status = "running";
+      phase = "thinking";
+      evidence.push("Sidebar contains 思考中.");
+    } else if (/操作中：([^\n]+)/.test(tail)) {
+      status = "running";
+      phase = `operating: ${extractLast(tail, /操作中：([^\n]+)/g)}`;
+      evidence.push("Sidebar contains 操作中.");
+    } else if (/执行中|跟随中|可继续补充信息/.test(tail)) {
+      status = "running";
+      phase = "executing";
+      evidence.push("Sidebar contains execution markers.");
+    } else if (/任务完成报告|本次智能代理任务完成|任务已成功完成|DONE|页面已成功加载/.test(tabbitSaid || tail)) {
+      status = "done";
+      phase = "completed";
+      evidence.push("Last Tabbit result contains completion markers.");
+    } else if (/描述任务，让 Tabbit 智能代理为你完成|在页面划词，或截图提问/.test(tail)) {
+      status = "idle";
+      phase = "ready_for_task";
+      evidence.push("Agent input is ready.");
+    }
+
+    if (currentPage) {
+      evidence.push(`Current content page: ${currentPage.title || "(untitled)"} ${currentPage.url}`);
+    }
+
+    return {
+      status,
+      phase,
+      completion: completionForStatus(status),
+      taskTitle,
+      currentPage: currentPage
+        ? { id: currentPage.id, title: currentPage.title, url: currentPage.url, active: currentPage.active }
+        : undefined,
+      tabbitSaid,
+      evidence,
+    };
   }
 
   async readVisible(limit = 12000): Promise<string> {
@@ -235,6 +317,14 @@ export class TabbitChat {
   }
 }
 
+function completionForStatus(status: "idle" | "awaiting_confirmation" | "running" | "done" | "unknown"): number | null {
+  if (status === "done") return 100;
+  if (status === "running") return 50;
+  if (status === "awaiting_confirmation") return 10;
+  if (status === "idle") return 0;
+  return null;
+}
+
 function isTransientChatState(text: string, lastResult: string): boolean {
   const tail = text.slice(-1200);
   const result = lastResult.trim();
@@ -244,4 +334,13 @@ function isTransientChatState(text: string, lastResult: string): boolean {
   if (/跳转到指定URL\s*$/.test(result)) return true;
   if (/我将为您|我来帮您|执行步骤\s*$/.test(result) && !/DONE|任务完成|成功|已完成|页面已成功加载/.test(result)) return true;
   return false;
+}
+
+function extractLast(text: string, pattern: RegExp): string | undefined {
+  let match: RegExpExecArray | null;
+  let value: string | undefined;
+  while ((match = pattern.exec(text))) {
+    value = match[1]?.trim();
+  }
+  return value;
 }

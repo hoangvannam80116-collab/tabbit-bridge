@@ -37,13 +37,22 @@ export function createTools(bridge: TabbitBridge): ToolDefinition[] {
     },
     {
       name: "tabbit.tabs.new",
-      description: "Open a new Tabbit tab for the supplied URL.",
+      description: "Open a new Tabbit side-tab for the supplied URL.",
       inputSchema: {
         type: "object",
         properties: { url: stringProperty("URL to open") },
         required: ["url"],
       },
       run: (args) => bridge.cdp.openTab(requiredString(args, "url")),
+    },
+    {
+      name: "tabbit.sidebar.new_tab",
+      description: "Create a new tab in Tabbit's side tab list. If no URL is supplied, opens Tabbit's new-tab page.",
+      inputSchema: {
+        type: "object",
+        properties: { url: stringProperty("Optional URL to open") },
+      },
+      run: (args) => bridge.cdp.openTab(optionalString(args, "url") ?? "https://web.tabbit-ai.com/newtab"),
     },
     {
       name: "tabbit.tabs.activate",
@@ -155,6 +164,12 @@ export function createTools(bridge: TabbitBridge): ToolDefinition[] {
         timeoutMs: optionalNumber(args, "timeoutMs"),
         quietMs: optionalNumber(args, "quietMs"),
       }),
+    },
+    {
+      name: "tabbit.agent.status",
+      description: "Report Tabbit agent runtime status: idle/running/waiting for execute/done, current phase, current page, task title, and latest Tabbit result.",
+      inputSchema: { type: "object", properties: {} },
+      run: () => bridge.chat.runtimeStatus(),
     },
     {
       name: "tabbit.task.create",

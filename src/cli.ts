@@ -19,6 +19,7 @@ Usage:
   tabbit tabs new <url>
   tabbit tabs activate <id>
   tabbit tabs close <id>
+  tabbit sidebar new-tab [url]
   tabbit page inspect [tabId]
   tabbit page eval <js>
   tabbit chat open
@@ -28,6 +29,7 @@ Usage:
   tabbit chat result
   tabbit chat confirm-execute
   tabbit chat run <prompt>
+  tabbit agent status
   tabbit task create <name>
   tabbit task list
   tabbit task status <id>
@@ -77,6 +79,13 @@ async function main(): Promise<void> {
     }
   }
 
+  if (group === "sidebar") {
+    if (command === "new-tab") {
+      print(await bridge.cdp.openTab(args[0] ?? "https://web.tabbit-ai.com/newtab"));
+      return;
+    }
+  }
+
   if (group === "page") {
     if (command === "inspect") {
       print(await bridge.cdp.inspectPage(args[0]));
@@ -117,6 +126,13 @@ async function main(): Promise<void> {
     if (command === "run") {
       const prompt = required(args.join(" "), "prompt");
       print(await bridge.chat.runTask(prompt));
+      return;
+    }
+  }
+
+  if (group === "agent") {
+    if (command === "status") {
+      print(await bridge.chat.runtimeStatus());
       return;
     }
   }

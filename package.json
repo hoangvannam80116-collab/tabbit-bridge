@@ -1,6 +1,6 @@
 {
   "name": "tabbit-bridge",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "MCP and CLI bridge for controlling Tabbit Browser as a Codex execution agent.",
   "type": "module",
   "license": "MIT",
