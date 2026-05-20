@@ -1,0 +1,38 @@
+{
+  "name": "tabbit-bridge",
+  "version": "0.1.0",
+  "description": "MCP and CLI bridge for controlling Tabbit Browser as a Codex execution agent.",
+  "type": "module",
+  "license": "MIT",
+  "private": false,
+  "bin": {
+    "tabbit": "./dist/cli.js",
+    "tabbit-mcp": "./dist/mcp/server.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "mcp": "tsx src/mcp/server.ts",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.24.1",
+    "exceljs": "^4.4.0",
+    "mammoth": "^1.11.0",
+    "pdf-parse": "^2.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
